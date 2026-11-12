@@ -1,0 +1,17 @@
+# Зависимости
+node_modules/
+
+# Сборка
+dist/
+*.tsbuildinfo
+
+# Локальные окружения
+.env
+.env.*
+!.env.example
+
+# Логи и утилитные файлы
+*.log
+.DS_Store
+coverage/
+.vite/
