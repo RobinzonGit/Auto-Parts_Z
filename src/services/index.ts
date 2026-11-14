@@ -1,8 +1,9 @@
 import type { AuthRepository } from './repositories/authRepository';
 import type { ComponentRepository } from './repositories/componentRepository';
 import type { RequestRepository } from './repositories/requestRepository';
-import { LocalAuthRepository } from './repositories/localAuthRepository'; import { LocalComponentRepository } from './repositories/localComponentRepository';
-import { LocalRequestRepository } from './repositories/localRequestRepository';
+// import { LocalAuthRepository } from './repositories/localAuthRepository'; 
+// import { LocalComponentRepository } from './repositories/localComponentRepository';
+// import { LocalRequestRepository } from './repositories/localRequestRepository';
 import { FirebaseAuthRepository } from './firebase/FirebaseAuthRepository';
 import { FirebaseComponentRepository } from './firebase/FirebaseComponentRepository';
 import { FirebaseRequestRepository } from './firebase/FirebaseRequestRepository';
