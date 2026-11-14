@@ -13,17 +13,20 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "ignoreDeprecations": "6.0",
+    //"ignoreDeprecations": "6.0",
 
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    "baseUrl": ".",
+    //"baseUrl": ".",
+    // "paths": {
+    //   "@/*": ["src/*"]
+    // }
     "paths": {
-      "@/*": ["src/*"]
-    }
+  "@/*": ["./src/*"]
+}
   },
   "include": ["src", "vite.config.ts"]
 }
