@@ -1,3 +1,4 @@
+import { toIso, tryDeletePhoto, uploadPhoto, cleanForFirestore } from './helpers';
 import {
   collection,
   deleteDoc,
@@ -9,7 +10,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './config';
-import { toIso, tryDeletePhoto, uploadPhoto } from './helpers';
+//import { toIso, tryDeletePhoto, uploadPhoto } from './helpers';
 import type { ComponentRepository } from '../repositories/componentRepository';
 import type {
   Component,
@@ -104,7 +105,8 @@ export class FirebaseComponentRepository implements ComponentRepository {
     };
     delete payload.photo;
 
-    await setDoc(newRef, payload);
+    //await setDoc(newRef, payload);
+    await setDoc(newRef, cleanForFirestore(payload));
 
     // Дочитываем — получим серверный Timestamp → ISO-строка в маппинге.
     const created = await this.get(newRef.id);
@@ -137,7 +139,8 @@ export class FirebaseComponentRepository implements ComponentRepository {
     }
     delete firestorePatch.photo;
 
-    await updateDoc(ref, firestorePatch);
+    //await updateDoc(ref, firestorePatch);
+    await updateDoc(ref, cleanForFirestore(firestorePatch));
 
     const updated = await this.get(id);
     if (!updated) throw new Error('Запчасть не найдена после обновления');

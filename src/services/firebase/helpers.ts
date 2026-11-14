@@ -87,3 +87,30 @@ export function translateAuthError(err: unknown): string {
   };
   return map[err.code] ?? err.message;
 }
+/**
+ * Рекурсивно удаляет все поля со значением `undefined` из объекта,
+ * чтобы Firestore не отклонял запись (`Unsupported field value: undefined`).
+ * Date и Firestore Timestamp (serverTimestamp) сохраняются без изменений.
+ */
+export function cleanForFirestore<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) {
+    return value.map((v) => cleanForFirestore(v)) as unknown as T;
+  }
+  if (typeof value === 'object') {
+    // Firestore Timestamp / FieldValue (serverTimestamp) — не трогаем
+    const proto = Object.getPrototypeOf(value);
+    if (proto && proto !== Object.prototype && proto !== null) {
+      return value;
+    }
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      const v = (value as Record<string, unknown>)[key];
+      if (v === undefined) continue;
+      out[key] = cleanForFirestore(v);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}

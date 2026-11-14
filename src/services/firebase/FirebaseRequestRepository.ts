@@ -1,3 +1,4 @@
+import { getRoleFromUser, toIso, cleanForFirestore } from './helpers';
 import {
   collection,
   deleteDoc,
@@ -11,7 +12,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './config';
-import { getRoleFromUser, toIso } from './helpers';
+//import { getRoleFromUser, toIso } from './helpers';
 import type { RequestRepository } from '../repositories/requestRepository';
 import type {
   CreateRequestInput,
@@ -110,7 +111,8 @@ export class FirebaseRequestRepository implements RequestRepository {
       updatedAt: serverTimestamp(),
     };
 
-    await setDoc(newRef, payload);
+    //await setDoc(newRef, payload);
+    await setDoc(newRef, cleanForFirestore(payload));
 
     const created = await getDoc(newRef);
     if (!created.exists()) throw new Error('Не удалось прочитать созданный запрос');
@@ -122,10 +124,14 @@ export class FirebaseRequestRepository implements RequestRepository {
     if (role !== 'moderator' && role !== 'admin') {
       throw new Error('Недостаточно прав для смены статуса');
     }
-    await updateDoc(doc(db, COLLECTION, id), {
-      status,
-      updatedAt: serverTimestamp(),
-    });
+    // await updateDoc(doc(db, COLLECTION, id), {
+    //   status,
+    //   updatedAt: serverTimestamp(),
+    // });
+    await updateDoc(doc(db, COLLECTION, id), cleanForFirestore({
+    status,
+    updatedAt: serverTimestamp(),
+   }));
   }
 
   async delete(id: string): Promise<void> {

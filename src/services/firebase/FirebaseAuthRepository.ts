@@ -1,3 +1,4 @@
+import { getRoleFromUser, translateAuthError, cleanForFirestore } from './helpers';
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
@@ -20,7 +21,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from './config';
-import { getRoleFromUser, translateAuthError } from './helpers';
+//import { getRoleFromUser, translateAuthError } from './helpers';
 import type { AuthRepository } from '../repositories/authRepository';
 import type {
   LoginInput,
@@ -82,12 +83,18 @@ export class FirebaseAuthRepository implements AuthRepository {
       const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
       await firebaseUpdateProfile(cred.user, { displayName: data.name });
 
-      await setDoc(doc(db, USERS, cred.user.uid), {
+      // await setDoc(doc(db, USERS, cred.user.uid), {
+      //   email: data.email,
+      //   name: data.name,
+      //   role: 'user',
+      //   createdAt: serverTimestamp(),
+      // });
+      await setDoc(doc(db, USERS, cred.user.uid), cleanForFirestore({
         email: data.email,
         name: data.name,
         role: 'user',
         createdAt: serverTimestamp(),
-      });
+      }));
 
       const user = await mapFirebaseUser(cred.user);
       cachedUser = user;
@@ -136,7 +143,8 @@ export class FirebaseAuthRepository implements AuthRepository {
     };
     if (patch.name !== undefined) firestorePatch.name = patch.name;
 
-    await updateDoc(doc(db, USERS, userId), firestorePatch);
+    //await updateDoc(doc(db, USERS, userId), firestorePatch);
+    await updateDoc(doc(db, USERS, userId), cleanForFirestore(firestorePatch));
 
     const user = await mapFirebaseUser(fbUser);
     cachedUser = user;
