@@ -1,15 +1,22 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
-import '@/theme/global.css';
+import { waitForUser } from './services/firebase/FirebaseAuthRepository';
+import './index.css';
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error('Не найден элемент #root — проверьте index.html');
-}
-
-createRoot(rootElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
 );
+
+// Ждём восстановления сессии Firebase, чтобы getCurrentUser() был готов
+// к первому рендеру ProtectedRoute.
+waitForUser().finally(() => {
+  root.render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+});
