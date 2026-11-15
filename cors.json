@@ -1,0 +1,17 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "https://autopartsr.netlify.app"
+    ],
+    "method": ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "x-goog-upload-command",
+      "x-goog-upload-offset",
+      "x-goog-upload-protocol",
+      "x-firebase-storage-version"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
