@@ -1,4 +1,3 @@
-import { toIso, tryDeletePhoto, uploadPhoto, cleanForFirestore } from './helpers';
 import {
   collection,
   deleteDoc,
@@ -10,7 +9,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './config';
-//import { toIso, tryDeletePhoto, uploadPhoto } from './helpers';
+import { toIso, tryDeletePhoto, uploadPhoto, cleanForFirestore } from './helpers';
 import type { ComponentRepository } from '../repositories/componentRepository';
 import type {
   Component,
@@ -93,7 +92,16 @@ export class FirebaseComponentRepository implements ComponentRepository {
 
     let photoUrl: string | null = null;
     if (photo) {
-      photoUrl = await uploadPhoto(photoPath(newRef.id), photo);
+      // Если загрузка фото падает (CORS/права) — не теряем запись целиком,
+      // а сообщаем пользователю понятную ошибку.
+      try {
+        photoUrl = await uploadPhoto(photoPath(newRef.id), photo);
+      } catch (err) {
+        console.error('uploadPhoto failed:', err);
+        throw new Error(
+          'Не удалось загрузить фото. Проверьте CORS в Firebase Storage и правила Storage.'
+        );
+      }
     }
 
     const payload: Record<string, unknown> = {
@@ -105,10 +113,8 @@ export class FirebaseComponentRepository implements ComponentRepository {
     };
     delete payload.photo;
 
-    //await setDoc(newRef, payload);
     await setDoc(newRef, cleanForFirestore(payload));
 
-    // Дочитываем — получим серверный Timestamp → ISO-строка в маппинге.
     const created = await this.get(newRef.id);
     if (!created) throw new Error('Не удалось прочитать созданную запчасть');
     return created;
@@ -129,17 +135,29 @@ export class FirebaseComponentRepository implements ComponentRepository {
 
     if ('photo' in p) {
       if (p.photo === null) {
-        await tryDeletePhoto(photoPath(id));
+        // Удаляем старое фото, но не блокируем обновление документа,
+        // если Storage ответил ошибкой.
+        try {
+          await tryDeletePhoto(photoPath(id));
+        } catch (err) {
+          console.warn('Не удалось удалить старое фото:', err);
+        }
         firestorePatch.photoUrl = null;
         firestorePatch.hasPhoto = false;
       } else if (p.photo) {
-        firestorePatch.photoUrl = await uploadPhoto(photoPath(id), p.photo);
-        firestorePatch.hasPhoto = true;
+        try {
+          firestorePatch.photoUrl = await uploadPhoto(photoPath(id), p.photo);
+          firestorePatch.hasPhoto = true;
+        } catch (err) {
+          console.error('uploadPhoto failed:', err);
+          throw new Error(
+            'Не удалось загрузить фото. Проверьте CORS в Firebase Storage и правила Storage.'
+          );
+        }
       }
     }
     delete firestorePatch.photo;
 
-    //await updateDoc(ref, firestorePatch);
     await updateDoc(ref, cleanForFirestore(firestorePatch));
 
     const updated = await this.get(id);
@@ -148,8 +166,17 @@ export class FirebaseComponentRepository implements ComponentRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await tryDeletePhoto(photoPath(id));
+    // 1. Сначала удаляем документ из Firestore — это главное действие.
+    //    Если оно упадёт (permission-denied), пользователь сразу увидит ошибку.
     await deleteDoc(doc(db, COLLECTION, id));
+
+    // 2. Затем пытаемся удалить фото. Ошибка Storage (CORS/права)
+    //    больше не мешает удалению записи.
+    try {
+      await tryDeletePhoto(photoPath(id));
+    } catch (err) {
+      console.warn('Запись удалена, но фото осталось в Storage:', err);
+    }
   }
 
   async bulkCreate(items: CreateComponentInput[]): Promise<Component[]> {
