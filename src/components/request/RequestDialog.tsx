@@ -1,9 +1,20 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  Typography,
+} from '@mui/material';
 import type { Component } from '@/types';
-import { createRequestSchema, type CreateRequestFormValues } from '@/features/requests/schemas';
+import {
+  createRequestSchema,
+  type CreateRequestFormValues,
+} from '@/features/requests/schemas';
 import { useRequestsStore } from '@/store/requestsStore';
 import { FormTextField } from '@/components/FormTextField';
 
@@ -16,6 +27,7 @@ interface RequestDialogProps {
 /** Диалог «Запросить закупку» для позиции каталога. */
 export function RequestDialog({ open, onClose, component }: RequestDialogProps) {
   const create = useRequestsStore((s) => s.create);
+
   const {
     control,
     handleSubmit,
@@ -33,10 +45,22 @@ export function RequestDialog({ open, onClose, component }: RequestDialogProps) 
   const onSubmit = async (values: CreateRequestFormValues): Promise<void> => {
     if (!component) return;
     try {
-      await create({ componentId: component.id, quantity: values.quantity, comment: values.comment || undefined });
+      await create({
+        componentId: component.id,
+        quantity: values.quantity,
+        // comment всегда строка — пустая, если пользователь ничего не ввёл.
+        // Не передаём undefined: иначе поле может быть вырезано
+        // cleanForFirestore и не сохранится в документе.
+        comment: values.comment ?? '',
+      });
       onClose();
-    } catch {
-      /* ошибка показана в снекбаре */
+    } catch (err) {
+      console.error('Ошибка создания запроса:', err);
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось создать запрос. Попробуйте ещё раз.',
+      );
     }
   };
 
@@ -46,13 +70,29 @@ export function RequestDialog({ open, onClose, component }: RequestDialogProps) 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <DialogContent sx={{ pt: 1 }}>
           {component && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 2 }}
+            >
               {component.name} · артикул {component.article}
             </Typography>
           )}
           <Stack spacing={2}>
-            <FormTextField name="quantity" control={control} label="Количество" type="number" inputProps={{ min: 1 }} />
-            <FormTextField name="comment" control={control} label="Комментарий (необязательно)" multiline minRows={2} />
+            <FormTextField
+              name="quantity"
+              control={control}
+              label="Количество"
+              type="number"
+              inputProps={{ min: 1 }}
+            />
+            <FormTextField
+              name="comment"
+              control={control}
+              label="Комментарий (необязательно)"
+              multiline
+              minRows={2}
+            />
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -1,4 +1,3 @@
-import { getRoleFromUser, toIso, cleanForFirestore } from './helpers';
 import {
   collection,
   deleteDoc,
@@ -12,7 +11,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './config';
-//import { getRoleFromUser, toIso } from './helpers';
+import { getRoleFromUser, toIso, cleanForFirestore } from './helpers';
 import type { RequestRepository } from '../repositories/requestRepository';
 import type {
   CreateRequestInput,
@@ -33,6 +32,7 @@ function mapRequest(id: string, data: Record<string, unknown>): PurchaseRequest 
     componentArticle: (data.componentArticle as string) ?? '',
     quantity: Number(data.quantity ?? 1),
     status: data.status as RequestStatus,
+    comment: (data.comment as string) ?? '',
     note: (data.note as string) ?? '',
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
@@ -64,7 +64,7 @@ export class FirebaseRequestRepository implements RequestRepository {
     }
 
     let items = snap.docs.map((d) =>
-      mapRequest(d.id, d.data() as Record<string, unknown>)
+      mapRequest(d.id, d.data() as Record<string, unknown>),
     );
 
     if (query?.status) {
@@ -84,39 +84,54 @@ export class FirebaseRequestRepository implements RequestRepository {
     const user = auth.currentUser;
     if (!user) throw new Error('Не авторизован');
 
-    // Денормализация: тянем имя пользователя и артикул запчасти,
+    // Денормализация: тянем имя пользователя и данные запчасти,
     // чтобы PurchaseRequest содержал обязательные поля.
     const [userSnap, componentSnap] = await Promise.all([
       getDoc(doc(db, 'users', user.uid)),
       getDoc(doc(db, 'components', data.componentId)),
     ]);
 
-    const userName = (userSnap.data()?.name as string) ?? user.displayName ?? '';
+    const userName =
+      (userSnap.data()?.name as string) ??
+      user.displayName ??
+      user.email ??
+      '';
+
     const componentData = componentSnap.data() as
       | Record<string, unknown>
       | undefined;
+
     const componentName =
-      (componentData?.name as string) ?? (data as { componentName?: string }).componentName ?? '';
+      (componentData?.name as string) ??
+      (data as { componentName?: string }).componentName ??
+      '';
     const componentArticle = (componentData?.article as string) ?? '';
 
     const newRef = doc(collection(db, COLLECTION));
+
     const payload: Record<string, unknown> = {
       ...data,
       userId: user.uid,
       userName,
       componentName,
       componentArticle,
-      status: 'new' as RequestStatus, // поправьте на стартовый статус из вашего домена
+      // Комментарий всегда строкой — пустая строка, если пользователь не ввёл.
+      comment: (data as { comment?: string }).comment ?? '',
+      status: 'new' as RequestStatus,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    //await setDoc(newRef, payload);
     await setDoc(newRef, cleanForFirestore(payload));
 
     const created = await getDoc(newRef);
-    if (!created.exists()) throw new Error('Не удалось прочитать созданный запрос');
-    return mapRequest(created.id, created.data() as Record<string, unknown>);
+    if (!created.exists()) {
+      throw new Error('Не удалось прочитать созданный запрос');
+    }
+    return mapRequest(
+      created.id,
+      created.data() as Record<string, unknown>,
+    );
   }
 
   async updateStatus(id: string, status: RequestStatus): Promise<void> {
@@ -124,14 +139,13 @@ export class FirebaseRequestRepository implements RequestRepository {
     if (role !== 'moderator' && role !== 'admin') {
       throw new Error('Недостаточно прав для смены статуса');
     }
-    // await updateDoc(doc(db, COLLECTION, id), {
-    //   status,
-    //   updatedAt: serverTimestamp(),
-    // });
-    await updateDoc(doc(db, COLLECTION, id), cleanForFirestore({
-    status,
-    updatedAt: serverTimestamp(),
-   }));
+    await updateDoc(
+      doc(db, COLLECTION, id),
+      cleanForFirestore({
+        status,
+        updatedAt: serverTimestamp(),
+      }),
+    );
   }
 
   async delete(id: string): Promise<void> {

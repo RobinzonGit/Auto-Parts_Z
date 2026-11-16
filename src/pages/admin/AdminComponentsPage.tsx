@@ -107,7 +107,7 @@ export function AdminComponentsPage() {
     { id: 'quantity', label: 'Кол-во', align: 'right' },
     { id: 'purchasePrice', label: 'Закупка, ₽', align: 'right', render: (row) => row.purchasePrice.toFixed(2) },
     { id: 'markupPercent', label: 'Наценка, %', align: 'right' },
-    { id: 'price', label: 'Цена', align: 'right', render: (row) => <PriceText component={row} showManualWarning /> },
+    { id: 'price', label: 'Цена   ', align: 'right', render: (row) => <PriceText component={row} showManualWarning /> },
     {
       id: 'status',
       label: 'Статус',
