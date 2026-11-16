@@ -1,5 +1,5 @@
 // import { useEffect, useMemo, useRef, useState } from 'react';
-// import { useForm } from 'react-hook-form';
+// import { Controller, useForm } from 'react-hook-form';
 // import { zodResolver } from '@hookform/resolvers/zod';
 // import {
 //   Avatar,
@@ -12,6 +12,7 @@
 //   DialogTitle,
 //   IconButton,
 //   Stack,
+//   TextField,
 //   Tooltip,
 //   Typography,
 // } from '@mui/material';
@@ -75,19 +76,41 @@
 //     if (open) {
 //       reset(defaults);
 //       setPhoto(initial?.photo);
-//       setManualPrice(initial ? isManualPrice(initial.price, initial.purchasePrice, initial.markupPercent) : false);
+//       setManualPrice(
+//         initial
+//           ? isManualPrice(initial.price, initial.purchasePrice, initial.markupPercent)
+//           : false,
+//       );
 //     }
 //   }, [open, initial, defaults, reset]);
 
-//   const purchasePrice = watch('purchasePrice');
-//   const markupPercent = watch('markupPercent');
+//   const purchasePriceRaw = watch('purchasePrice');
+//   const markupPercentRaw = watch('markupPercent');
 
-//   // Автопересчёт цены, пока пользователь не переопределил её вручную.
+//   // MUI TextField с type="number" отдаёт СТРОКУ. Приводим к числу.
+//   const purchasePrice = Number(purchasePriceRaw);
+//   const markupPercent = Number(markupPercentRaw);
+
+//   const bothNumbers =
+//     Number.isFinite(purchasePrice) &&
+//     Number.isFinite(markupPercent) &&
+//     String(purchasePriceRaw).trim() !== '' &&
+//     String(markupPercentRaw).trim() !== '';
+
+//   const computedPrice = bothNumbers ? calcPrice(purchasePrice, markupPercent) : null;
+
+//   // Автопересчёт: срабатывает на любое изменение purchasePrice/markupPercent,
+//   // пока пользователь не включил ручной режим.
 //   useEffect(() => {
-//     if (!manualPrice && typeof purchasePrice === 'number' && typeof markupPercent === 'number') {
-//       setValue('price', calcPrice(purchasePrice, markupPercent), { shouldValidate: false });
-//     }
-//   }, [purchasePrice, markupPercent, manualPrice, setValue]);
+//     if (manualPrice) return;
+//     if (!bothNumbers) return;
+//     const next = calcPrice(purchasePrice, markupPercent);
+//     // shouldDirty: false — чтобы это не считалось «ручным» изменением
+//     setValue('price', Number(next.toFixed(2)), {
+//       shouldValidate: false,
+//       shouldDirty: false,
+//     });
+//   }, [purchasePrice, markupPercent, bothNumbers, manualPrice, setValue]);
 
 //   const onSubmit = async (values: ComponentFormValues): Promise<void> => {
 //     setSaving(true);
@@ -111,14 +134,11 @@
 //       const dataUrl = await processPhotoFile(file);
 //       setPhoto(dataUrl);
 //     } catch (error) {
-//       // processPhotoFile бросает AppError с понятным сообщением.
-//       const message = error instanceof Error ? error.message : 'Не удалось обработать изображение.';
+//       const message =
+//         error instanceof Error ? error.message : 'Не удалось обработать изображение.';
 //       alert(message);
 //     }
 //   };
-
-//   const computedPrice =
-//     typeof purchasePrice === 'number' && typeof markupPercent === 'number' ? calcPrice(purchasePrice, markupPercent) : null;
 
 //   return (
 //     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -130,7 +150,10 @@
 //               {photo ? (
 //                 <Avatar src={photo} variant="rounded" sx={{ width: 72, height: 72 }} />
 //               ) : (
-//                 <Avatar variant="rounded" sx={{ width: 72, height: 72, bgcolor: 'action.hover' }}>
+//                 <Avatar
+//                   variant="rounded"
+//                   sx={{ width: 72, height: 72, bgcolor: 'action.hover' }}
+//                 >
 //                   <ImageOutlinedIcon color="disabled" />
 //                 </Avatar>
 //               )}
@@ -142,7 +165,11 @@
 //                   accept="image/*"
 //                   onChange={(e) => void handleFileChange(e.target.files?.[0])}
 //                 />
-//                 <Button variant="outlined" size="small" onClick={() => fileInputRef.current?.click()}>
+//                 <Button
+//                   variant="outlined"
+//                   size="small"
+//                   onClick={() => fileInputRef.current?.click()}
+//                 >
 //                   Загрузить фото
 //                 </Button>
 //                 {photo && (
@@ -181,55 +208,88 @@
 //             </Stack>
 
 //             <Box>
-//               <FormTextField
+//               {/* Поле цены через Controller: различаем программный setValue и ввод пользователя. */}
+//               <Controller
 //                 name="price"
 //                 control={control}
-//                 label="Цена продажи, ₽"
-//                 type="number"
-//                 inputProps={{ step: '0.01', min: 0 }}
-//                 onChangeCapture={() => setManualPrice(true)}
-//                 helperText={
-//                   manualPrice
-//                     ? 'Цена задана вручную (отличается от расчётной).'
-//                     : computedPrice !== null
-//                       ? `Расчётная цена: ${computedPrice.toFixed(2)} ₽`
-//                       : 'По умолчанию: закупка × (1 + наценка / 100).'
-//                 }
-//                 InputProps={{
-//                   endAdornment: manualPrice ? (
-//                     <Tooltip title="Сбросить к расчётной цене">
-//                       <IconButton
-//                         size="small"
-//                         onClick={() => {
-//                           setManualPrice(false);
-//                           if (computedPrice !== null) setValue('price', computedPrice);
-//                         }}
-//                         aria-label="Сбросить к расчётной цене"
-//                       >
-//                         <RestartAltOutlinedIcon />
-//                       </IconButton>
-//                     </Tooltip>
-//                   ) : undefined,
-//                 }}
+//                 render={({ field, fieldState }) => (
+//                   <TextField
+//                     {...field}
+//                     value={field.value ?? ''}
+//                     onChange={(e) => {
+//                       // Реальное действие пользователя: включаем ручной режим
+//                       setManualPrice(true);
+//                       // MUI отдаёт строку; RHF/Zod обычно ждут number,
+//                       // поэтому преобразуем в число, но пустую строку оставляем ''.
+//                       const raw = e.target.value;
+//                       field.onChange(raw === '' ? ('' as unknown as number) : Number(raw));
+//                     }}
+//                     label="Цена продажи, ₽"
+//                     type="number"
+//                     fullWidth
+//                     error={Boolean(fieldState.error)}
+//                     helperText={
+//                       fieldState.error?.message ??
+//                       (manualPrice
+//                         ? 'Цена задана вручную (отличается от расчётной).'
+//                         : computedPrice !== null
+//                           ? `Расчётная цена: ${computedPrice.toFixed(2)} ₽`
+//                           : 'По умолчанию: закупка × (1 + наценка / 100).')
+//                     }
+//                     inputProps={{ step: '0.01', min: 0 }}
+//                     InputProps={{
+//                       endAdornment: manualPrice ? (
+//                         <Tooltip title="Сбросить к расчётной цене">
+//                           <IconButton
+//                             size="small"
+//                             onClick={() => {
+//                               setManualPrice(false);
+//                               if (computedPrice !== null) {
+//                                 setValue('price', Number(computedPrice.toFixed(2)), {
+//                                   shouldValidate: true,
+//                                   shouldDirty: false,
+//                                 });
+//                               }
+//                             }}
+//                             aria-label="Сбросить к расчётной цене"
+//                           >
+//                             <RestartAltOutlinedIcon />
+//                           </IconButton>
+//                         </Tooltip>
+//                       ) : undefined,
+//                     }}
+//                   />
+//                 )}
 //               />
 //               {manualPrice && (
-//                 <Chip size="small" color="warning" variant="outlined" label="Ручная цена" sx={{ mt: 0.5 }} />
+//                 <Chip
+//                   size="small"
+//                   color="warning"
+//                   variant="outlined"
+//                   label="Ручная цена"
+//                   sx={{ mt: 0.5 }}
+//                 />
 //               )}
 //             </Box>
 
 //             <Stack direction="row" spacing={2}>
 //               <FormTextField name="warehouseCell" control={control} label="Ячейка склада" />
-//               <FormTextField name="quantity" control={control} label="Количество" type="number" inputProps={{ min: 0 }} />
+//               <FormTextField
+//                 name="quantity"
+//                 control={control}
+//                 label="Количество"
+//                 type="number"
+//                 inputProps={{ min: 0 }}
+//               />
 //             </Stack>
 
-//             <FormTextField name="searchUrl" control={control} label="Ссылка поставщика (http/https)" />
+//             <FormTextField
+//               name="searchUrl"
+//               control={control}
+//               label="Ссылка поставщика (http/https)"
+//             />
 //             <FormTextField name="note" control={control} label="Примечание" multiline minRows={2} />
 
-//             {/* <FormTextField name="status" control={control} label="Статус" select>
-//               {COMPONENT_STATUSES.map((status) => (
-//                 <Box component="option" key={status} value={status}>
-//                   {COMPONENT_STATUS_LABELS[status]}
-//                 </Box> */}
 //             <FormTextField name="status" control={control} label="Статус" select>
 //               {COMPONENT_STATUSES.map((status) => (
 //                 <MenuItem key={status} value={status}>
@@ -251,8 +311,7 @@
 //     </Dialog>
 //   );
 // }
-//========================================================================================
-
+//===============================================================================
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -266,6 +325,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
@@ -275,13 +335,16 @@ import CloudOffOutlinedIcon from '@mui/icons-material/CloudOffOutlined';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import RestartAltOutlinedIcon from '@mui/icons-material/RestartAltOutlined';
 import type { Component } from '@/types';
-import { componentFormSchema, COMPONENT_STATUSES, type ComponentFormValues } from '@/features/components/schemas';
+import {
+  componentFormSchema,
+  COMPONENT_STATUSES,
+  type ComponentFormValues,
+} from '@/features/components/schemas';
 import { useComponentsStore } from '@/store/componentsStore';
 import { calcPrice, isManualPrice } from '@/utils/calc';
 import { processPhotoFile } from '@/utils/image';
 import { COMPONENT_STATUS_LABELS } from '@/utils/labels';
 import { FormTextField } from '@/components/FormTextField';
-import { MenuItem } from '@mui/material';
 
 interface ComponentFormDialogProps {
   open: boolean;
@@ -290,12 +353,23 @@ interface ComponentFormDialogProps {
   initial?: Component | null;
 }
 
-/** Диалог создания/редактирования запчасти: фото, авторасчёт цены, ручное переопределение. */
-export function ComponentFormDialog({ open, onClose, initial = null }: ComponentFormDialogProps) {
+/**
+ * Диалог создания/редактирования запчасти.
+ * Фото хранится как base64-строка и передаётся в репозиторий
+ * ТОЛЬКО если пользователь его действительно изменил.
+ */
+export function ComponentFormDialog({
+  open,
+  onClose,
+  initial = null,
+}: ComponentFormDialogProps) {
   const { create, update } = useComponentsStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [manualPrice, setManualPrice] = useState(false);
   const [photo, setPhoto] = useState<string | undefined>(undefined);
+  // Флаг: менял ли пользователь фото в этой сессии редактирования.
+  const [photoChanged, setPhotoChanged] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const defaults = useMemo<ComponentFormValues>(
@@ -310,7 +384,7 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
       searchUrl: initial?.searchUrl ?? '',
       note: initial?.note ?? '',
       status: initial?.status ?? 'active',
-      photo: initial?.photo,
+      photo: initial?.photo ?? undefined,
     }),
     [initial],
   );
@@ -328,21 +402,25 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
 
   // При открытии/смене редактируемой записи — сброс формы.
   useEffect(() => {
-    if (open) {
-      reset(defaults);
-      setPhoto(initial?.photo);
-      setManualPrice(
-        initial
-          ? isManualPrice(initial.price, initial.purchasePrice, initial.markupPercent)
-          : false,
-      );
-    }
+    if (!open) return;
+    reset(defaults);
+    setPhoto(initial?.photo ?? undefined);
+    setPhotoChanged(false);
+    setManualPrice(
+      initial
+        ? isManualPrice(
+            initial.price,
+            initial.purchasePrice,
+            initial.markupPercent,
+          )
+        : false,
+    );
   }, [open, initial, defaults, reset]);
 
   const purchasePriceRaw = watch('purchasePrice');
   const markupPercentRaw = watch('markupPercent');
 
-  // MUI TextField с type="number" отдаёт СТРОКУ. Приводим к числу.
+  // MUI TextField с type="number" отдаёт строку — приводим к числу.
   const purchasePrice = Number(purchasePriceRaw);
   const markupPercent = Number(markupPercentRaw);
 
@@ -352,15 +430,15 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
     String(purchasePriceRaw).trim() !== '' &&
     String(markupPercentRaw).trim() !== '';
 
-  const computedPrice = bothNumbers ? calcPrice(purchasePrice, markupPercent) : null;
+  const computedPrice = bothNumbers
+    ? calcPrice(purchasePrice, markupPercent)
+    : null;
 
-  // Автопересчёт: срабатывает на любое изменение purchasePrice/markupPercent,
-  // пока пользователь не включил ручной режим.
+  // Автопересчёт цены, пока пользователь не включил ручной режим.
   useEffect(() => {
     if (manualPrice) return;
     if (!bothNumbers) return;
     const next = calcPrice(purchasePrice, markupPercent);
-    // shouldDirty: false — чтобы это не считалось «ручным» изменением
     setValue('price', Number(next.toFixed(2)), {
       shouldValidate: false,
       shouldDirty: false,
@@ -370,14 +448,27 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
   const onSubmit = async (values: ComponentFormValues): Promise<void> => {
     setSaving(true);
     try {
+      // Передаём photo только если его меняли. Иначе поле отсутствует
+      // в патче, и репозиторий не трогает старое фото в Firestore.
+      const payload = {
+        ...values,
+        ...(photoChanged ? { photo: photo ?? null } : {}),
+      };
+
       if (initial) {
-        await update(initial.id, { ...values, photo });
+        await update(initial.id, payload);
       } else {
-        await create({ ...values, photo });
+        // При создании photo передаём всегда — там его ещё нет.
+        await create({ ...values, photo: photo ?? null });
       }
       onClose();
-    } catch {
-      // Ошибка уже показана в снекбаре.
+    } catch (err) {
+      console.error('Ошибка сохранения запчасти:', err);
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить запчасть. Попробуйте ещё раз.',
+      );
     } finally {
       setSaving(false);
     }
@@ -388,22 +479,36 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
     try {
       const dataUrl = await processPhotoFile(file);
       setPhoto(dataUrl);
+      setPhotoChanged(true);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Не удалось обработать изображение.';
+        error instanceof Error
+          ? error.message
+          : 'Не удалось обработать изображение.';
       alert(message);
     }
   };
 
+  const handleRemovePhoto = (): void => {
+    setPhoto(undefined);
+    setPhotoChanged(true);
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{initial ? 'Редактирование запчасти' : 'Новая запчасть'}</DialogTitle>
+      <DialogTitle>
+        {initial ? 'Редактирование запчасти' : 'Новая запчасть'}
+      </DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <DialogContent sx={{ pt: 1 }}>
           <Stack spacing={2}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               {photo ? (
-                <Avatar src={photo} variant="rounded" sx={{ width: 72, height: 72 }} />
+                <Avatar
+                  src={photo}
+                  variant="rounded"
+                  sx={{ width: 72, height: 72 }}
+                />
               ) : (
                 <Avatar
                   variant="rounded"
@@ -429,7 +534,10 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
                 </Button>
                 {photo && (
                   <Tooltip title="Удалить фото">
-                    <IconButton onClick={() => setPhoto(undefined)} aria-label="Удалить фото">
+                    <IconButton
+                      onClick={handleRemovePhoto}
+                      aria-label="Удалить фото"
+                    >
                       <CloudOffOutlinedIcon />
                     </IconButton>
                   </Tooltip>
@@ -463,7 +571,8 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
             </Stack>
 
             <Box>
-              {/* Поле цены через Controller: различаем программный setValue и ввод пользователя. */}
+              {/* Поле цены через Controller: различаем программный setValue
+                  и реальный ввод пользователя. */}
               <Controller
                 name="price"
                 control={control}
@@ -472,12 +581,11 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => {
-                      // Реальное действие пользователя: включаем ручной режим
                       setManualPrice(true);
-                      // MUI отдаёт строку; RHF/Zod обычно ждут number,
-                      // поэтому преобразуем в число, но пустую строку оставляем ''.
                       const raw = e.target.value;
-                      field.onChange(raw === '' ? ('' as unknown as number) : Number(raw));
+                      field.onChange(
+                        raw === '' ? ('' as unknown as number) : Number(raw),
+                      );
                     }}
                     label="Цена продажи, ₽"
                     type="number"
@@ -500,10 +608,14 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
                             onClick={() => {
                               setManualPrice(false);
                               if (computedPrice !== null) {
-                                setValue('price', Number(computedPrice.toFixed(2)), {
-                                  shouldValidate: true,
-                                  shouldDirty: false,
-                                });
+                                setValue(
+                                  'price',
+                                  Number(computedPrice.toFixed(2)),
+                                  {
+                                    shouldValidate: true,
+                                    shouldDirty: false,
+                                  },
+                                );
                               }
                             }}
                             aria-label="Сбросить к расчётной цене"
@@ -528,7 +640,11 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
             </Box>
 
             <Stack direction="row" spacing={2}>
-              <FormTextField name="warehouseCell" control={control} label="Ячейка склада" />
+              <FormTextField
+                name="warehouseCell"
+                control={control}
+                label="Ячейка склада"
+              />
               <FormTextField
                 name="quantity"
                 control={control}
@@ -543,7 +659,13 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
               control={control}
               label="Ссылка поставщика (http/https)"
             />
-            <FormTextField name="note" control={control} label="Примечание" multiline minRows={2} />
+            <FormTextField
+              name="note"
+              control={control}
+              label="Примечание"
+              multiline
+              minRows={2}
+            />
 
             <FormTextField name="status" control={control} label="Статус" select>
               {COMPONENT_STATUSES.map((status) => (
@@ -559,7 +681,7 @@ export function ComponentFormDialog({ open, onClose, initial = null }: Component
             Отмена
           </Button>
           <Button type="submit" variant="contained" disabled={saving}>
-            {initial ? 'Сохранить' : 'Добавить'}
+            {saving ? 'Сохранение...' : initial ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogActions>
       </form>
