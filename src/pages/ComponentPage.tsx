@@ -28,7 +28,10 @@ import { useComponentsStore } from '@/store/componentsStore';
 import { useUiStore } from '@/store/uiStore';
 import { calcPrice, isManualPrice } from '@/utils/calc';
 import { formatDateTime } from '@/utils/format';
-import { COMPONENT_STATUS_LABELS, COMPONENT_STATUS_COLOR } from '@/utils/labels';
+import {
+  COMPONENT_STATUS_LABELS,
+  COMPONENT_STATUS_COLOR,
+} from '@/utils/labels';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusChip } from '@/components/StatusChip';
 import { PriceText } from '@/components/PriceText';
@@ -48,7 +51,6 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-/** Карточка запчасти: детали, фото, кнопка-облачко (админ), CRUD для staff. */
 export function ComponentPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -76,15 +78,29 @@ export function ComponentPage() {
 
   if (notFound) {
     return (
-      <Alert severity="warning" action={<Button component={RouterLink} to="/catalog">В каталог</Button>}>
+      <Alert
+        severity="warning"
+        action={
+          <Button component={RouterLink} to="/catalog">
+            В каталог
+          </Button>
+        }
+      >
         Запчасть не найдена — возможно, она была удалена.
       </Alert>
     );
   }
   if (!component) return null;
 
-  const manual = isManualPrice(component.price, component.purchasePrice, component.markupPercent);
-  const computed = calcPrice(component.purchasePrice, component.markupPercent);
+  const manual = isManualPrice(
+    component.price,
+    component.purchasePrice,
+    component.markupPercent,
+  );
+  const computed = calcPrice(
+    component.purchasePrice,
+    component.markupPercent,
+  );
 
   const handleResetPrice = async (): Promise<void> => {
     try {
@@ -100,7 +116,8 @@ export function ComponentPage() {
     <>
       <PageHeader
         title={component.name}
-        subtitle={`Артикул: ${component.article} · Обновлено ${formatDateTime(component.updatedAt)}`}
+        //subtitle={`Артикул: ${component.article} · Обновлено ${formatDateTime(component.updatedAt)}`}
+        subtitle={`Артикул: ${component.article} · Обновлено ${formatDateTime(component.updatedAt ?? '')}`}
         actions={
           <>
             <Tooltip title="Назад в каталог">
@@ -108,18 +125,30 @@ export function ComponentPage() {
                 <ArrowBackOutlinedIcon />
               </IconButton>
             </Tooltip>
-            <Button startIcon={<ShoppingCartOutlinedIcon />} onClick={() => setRequestOpen(true)}>
+            <Button
+              startIcon={<ShoppingCartOutlinedIcon />}
+              onClick={() => setRequestOpen(true)}
+            >
               Запросить закупку
             </Button>
-            {/* Кнопка-облачко: поиск в интернете, только администратор */}
-            <WebSearchButton initialName={component.name} initialArticle={component.article} />
+            <WebSearchButton
+              initialName={component.name}
+              initialArticle={component.article}
+            />
             {isStaff && (
               <>
-                <Button startIcon={<EditOutlinedIcon />} onClick={() => setEditOpen(true)}>
+                <Button
+                  startIcon={<EditOutlinedIcon />}
+                  onClick={() => setEditOpen(true)}
+                >
                   Редактировать
                 </Button>
                 <Tooltip title="Удалить запчасть">
-                  <IconButton color="error" onClick={() => setDeleteOpen(true)} aria-label="Удалить">
+                  <IconButton
+                    color="error"
+                    onClick={() => setDeleteOpen(true)}
+                    aria-label="Удалить"
+                  >
                     <DeleteOutlinedIcon />
                   </IconButton>
                 </Tooltip>
@@ -136,7 +165,15 @@ export function ComponentPage() {
               {component.photo ? (
                 <ImageList sx={{ m: 0 }} cols={1} rowHeight={320}>
                   <ImageListItem>
-                    <img src={component.photo} alt={component.name} style={{ borderRadius: 12, objectFit: 'cover', height: 320 }} />
+                    <img
+                      src={component.photo}
+                      alt={component.name}
+                      style={{
+                        borderRadius: 12,
+                        objectFit: 'cover',
+                        height: 320,
+                      }}
+                    />
                   </ImageListItem>
                 </ImageList>
               ) : (
@@ -150,7 +187,9 @@ export function ComponentPage() {
                     justifyContent: 'center',
                   }}
                 >
-                  <ImageOutlinedIcon sx={{ fontSize: 72, color: 'text.disabled' }} />
+                  <ImageOutlinedIcon
+                    sx={{ fontSize: 72, color: 'text.disabled' }}
+                  />
                 </Box>
               )}
             </CardContent>
@@ -159,13 +198,28 @@ export function ComponentPage() {
 
         <Grid item xs={12} md={7}>
           <Card variant="outlined" sx={{ borderRadius: 2 }}>
-            <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <StatusChip label={COMPONENT_STATUS_LABELS[component.status]} color={COMPONENT_STATUS_COLOR[component.status]} />
+            <CardContent
+              sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+            >
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <StatusChip
+                  label={COMPONENT_STATUS_LABELS[component.status]}
+                  color={COMPONENT_STATUS_COLOR[component.status]}
+                />
                 <PriceText component={component} showManualWarning={isStaff} />
                 {manual && isStaff && (
                   <Tooltip title="Сбросить к расчётной: закупка × (1 + наценка / 100)">
-                    <Button size="small" startIcon={<RestartAltOutlinedIcon />} onClick={() => void handleResetPrice()}>
+                    <Button
+                      size="small"
+                      startIcon={<RestartAltOutlinedIcon />}
+                      onClick={() => void handleResetPrice()}
+                    >
                       Сбросить к расчётной ({computed.toFixed(2)} ₽)
                     </Button>
                   </Tooltip>
@@ -176,29 +230,52 @@ export function ComponentPage() {
 
               <Grid container spacing={2}>
                 <Grid item xs={6} sm={4}>
-                  <DetailItem label="Ячейка склада" value={component.warehouseCell} />
+                  <DetailItem
+                    label="Ячейка склада"
+                    value={component.warehouseCell}
+                  />
                 </Grid>
                 <Grid item xs={6} sm={4}>
                   <DetailItem
                     label="Количество"
-                    value={component.quantity > 0 ? component.quantity : <Box component="span" sx={{ color: 'error.main' }}>0</Box>}
+                    value={
+                      component.quantity > 0 ? (
+                        component.quantity
+                      ) : (
+                        <Box component="span" sx={{ color: 'error.main' }}>
+                          0
+                        </Box>
+                      )
+                    }
                   />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                  <DetailItem label="Цена продажи" value={<PriceText component={component} />} />
+                  <DetailItem
+                    label="Цена продажи"
+                    value={<PriceText component={component} />}
+                  />
                 </Grid>
                 {isStaff && (
                   <>
                     <Grid item xs={6} sm={4}>
-                      <DetailItem label="Закупочная цена" value={component.purchasePrice.toFixed(2)} />
+                      <DetailItem
+                        label="Закупочная цена"
+                        value={component.purchasePrice.toFixed(2)}
+                      />
                     </Grid>
                     <Grid item xs={6} sm={4}>
-                      <DetailItem label="Наценка" value={`${component.markupPercent}%`} />
+                      <DetailItem
+                        label="Наценка"
+                        value={`${component.markupPercent}%`}
+                      />
                     </Grid>
                   </>
                 )}
                 <Grid item xs={6} sm={4}>
-                  <DetailItem label="Создано" value={formatDateTime(component.createdAt)} />
+                  <DetailItem
+                    label="Создано"
+                    value={formatDateTime(component.createdAt ?? '')}
+                  />
                 </Grid>
               </Grid>
 
@@ -253,7 +330,11 @@ export function ComponentPage() {
         confirmText="Удалить"
         danger
       />
-      <RequestDialog open={requestOpen} onClose={() => setRequestOpen(false)} component={component} />
+      <RequestDialog
+        open={requestOpen}
+        onClose={() => setRequestOpen(false)}
+        component={component}
+      />
     </>
   );
 }

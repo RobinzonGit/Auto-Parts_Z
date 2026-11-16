@@ -26,6 +26,8 @@ export interface StoredUser {
   passwordHash: string;
 }
 
+
+
 /** Запчасть в хранилище: без фото, но с признаком его наличия в IndexedDB. */
 export type StoredComponent = Omit<Component, 'photo'> & { hasPhoto: boolean };
 

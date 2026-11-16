@@ -7,42 +7,56 @@ import type {
 } from '@/types/component';
 import type { Paginated } from '@/types/common';
 import type { ComponentRepository } from './componentRepository';
-import { loadDb, saveDb, getSessionUser, type StoredComponent } from '@/services/storage/localDb';
+import {
+  loadDb,
+  saveDb,
+  getSessionUser,
+  type StoredComponent,
+} from '@/services/storage/localDb';
 import { deletePhoto, getPhoto, putPhoto } from '@/services/storage/photoStore';
 import { calcPrice } from '@/utils/calc';
 import { logger } from '@/utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
-/**
- * Локальная реализация ComponentRepository.
- * CRUD доступен только moderator/admin (двойная защита: маршрут + репозиторий).
- * Метаданные — в localStorage, фото — в IndexedDB (photoStore).
- */
-
 /** Добавляет photo (data URL) к записи из хранилища. */
 async function hydratePhoto(record: StoredComponent): Promise<Component> {
-  if (!record.hasPhoto) {
-    const { hasPhoto: _f, ...component } = record;
-    return component;
-  }
-  const photo = await getPhoto(record.id);
-  const { hasPhoto: _f, ...component } = record;
-  return photo ? { ...component, photo } : component;
+  const photo = record.hasPhoto ? await getPhoto(record.id) : undefined;
+  return {
+    id: record.id,
+    name: record.name,
+    article: record.article,
+    purchasePrice: record.purchasePrice,
+    markupPercent: record.markupPercent,
+    price: record.price,
+    warehouseCell: record.warehouseCell,
+    quantity: record.quantity,
+    note: record.note ?? '',
+    status: record.status,
+    photo: photo ?? null,
+    hasPhoto: Boolean(photo),
+    searchUrl: record.searchUrl,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
 }
 
-/** Проверка прав staff (модератор или администратор). */
 function requireStaff(): void {
   const user = getSessionUser();
   if (!user) throw new AppError('UNAUTHORIZED', 'Требуется авторизация.');
   if (user.role !== 'moderator' && user.role !== 'admin') {
-    throw new AppError('FORBIDDEN', 'Изменять запчасти могут только модератор и администратор.');
+    throw new AppError(
+      'FORBIDDEN',
+      'Изменять запчасти могут только модератор и администратор.',
+    );
   }
 }
 
-/** Валидация внешней ссылки на уровне данных (страховка после Zod-валидации в форме). */
 function assertValidSearchUrl(searchUrl?: string): void {
   if (searchUrl && !/^https?:\/\//i.test(searchUrl)) {
-    throw new AppError('VALIDATION', 'Ссылка для поиска должна начинаться с http:// или https://');
+    throw new AppError(
+      'VALIDATION',
+      'Ссылка для поиска должна начинаться с http:// или https://',
+    );
   }
 }
 
@@ -54,7 +68,9 @@ export class LocalComponentRepository implements ComponentRepository {
     let items = [...db.components];
     if (search) {
       items = items.filter((c) =>
-        [c.name, c.article, c.warehouseCell, c.note ?? ''].some((field) => field.toLowerCase().includes(search)),
+        [c.name, c.article, c.warehouseCell, c.note ?? ''].some((field) =>
+          field.toLowerCase().includes(search),
+        ),
       );
     }
     if (query.status) {
@@ -79,7 +95,10 @@ export class LocalComponentRepository implements ComponentRepository {
   async create(data: CreateComponentInput): Promise<Component> {
     requireStaff();
     const created = await this.addOne(data);
-    logger.info('components', 'Запчасть создана', { id: created.id, name: created.name });
+    logger.info('components', 'Запчасть создана', {
+      id: created.id,
+      name: created.name,
+    });
     return created;
   }
 
@@ -90,10 +109,11 @@ export class LocalComponentRepository implements ComponentRepository {
     if (!record) throw new AppError('NOT_FOUND', 'Запчасть не найдена.');
 
     const nextPrice =
-      patch.price !== undefined ? patch.price : calcPrice(record.purchasePrice, record.markupPercent);
+      patch.price !== undefined
+        ? patch.price
+        : calcPrice(record.purchasePrice, record.markupPercent);
 
     if ('photo' in patch) {
-      // Явная передача ключа photo: значение undefined означает «удалить фото».
       if (patch.photo) {
         await putPhoto(id, patch.photo);
         record.hasPhoto = true;
@@ -110,8 +130,9 @@ export class LocalComponentRepository implements ComponentRepository {
     record.price = nextPrice;
     record.warehouseCell = (patch.warehouseCell ?? record.warehouseCell).trim();
     record.quantity = patch.quantity ?? record.quantity;
-    record.searchUrl = patch.searchUrl !== undefined ? patch.searchUrl || undefined : record.searchUrl;
-    record.note = patch.note !== undefined ? patch.note || undefined : record.note;
+    record.searchUrl =
+      patch.searchUrl !== undefined ? patch.searchUrl : record.searchUrl;
+    record.note = patch.note !== undefined ? patch.note : record.note;
     record.status = patch.status ?? record.status;
     assertValidSearchUrl(record.searchUrl);
     record.updatedAt = new Date().toISOString();
@@ -141,7 +162,6 @@ export class LocalComponentRepository implements ComponentRepository {
     return created;
   }
 
-  /** Внутреннее добавление записи без повторной проверки прав. */
   private async addOne(data: CreateComponentInput): Promise<Component> {
     const db = loadDb();
     const id = uuidv4();
@@ -157,8 +177,8 @@ export class LocalComponentRepository implements ComponentRepository {
       price: data.price ?? calcPrice(data.purchasePrice, data.markupPercent),
       warehouseCell: data.warehouseCell.trim(),
       quantity: data.quantity,
-      searchUrl: data.searchUrl?.trim() || undefined,
-      note: data.note?.trim() || undefined,
+      searchUrl: data.searchUrl?.trim() ?? '',
+      note: data.note?.trim() ?? '',
       status: data.status ?? 'active',
       createdAt: now,
       updatedAt: now,
