@@ -189,9 +189,9 @@ export class FirebaseAuthRepository implements AuthRepository {
    * «сработавшим», хотя права не изменились.
    */
   async updateRole(userId: string, role: Role): Promise<void> {
-    // const { getFunctions, httpsCallable } = await import('firebase/functions');
-    // const fns = getFunctions();
-    // await httpsCallable(fns, 'setUserRole')({ uid: userId, role });
+     const { getFunctions, httpsCallable } = await import('firebase/functions');
+     const fns = getFunctions();
+     await httpsCallable(fns, 'setUserRole')({ uid: userId, role });
     throw new Error(
       `updateRole(${userId}, ${role}) требует Cloud Function с Admin SDK ` +
         '(custom claims нельзя менять с клиента).'
@@ -199,8 +199,8 @@ export class FirebaseAuthRepository implements AuthRepository {
   }
 
   async deleteUser(userId: string): Promise<void> {
-    // const { getFunctions, httpsCallable } = await import('firebase/functions');
-    // await httpsCallable(getFunctions(), 'deleteUser')({ uid: userId });
+     const { getFunctions, httpsCallable } = await import('firebase/functions');
+     await httpsCallable(getFunctions(), 'deleteUser')({ uid: userId });
     // Ниже — только удаление документа профиля; удаление из Firebase Auth
     // доступно только через Admin SDK.
     await deleteDoc(doc(db, USERS, userId));
