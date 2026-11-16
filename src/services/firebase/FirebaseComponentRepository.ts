@@ -9,7 +9,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './config';
-import { toIso, tryDeletePhoto, uploadPhoto, cleanForFirestore } from './helpers';
+import { toIso, cleanForFirestore } from './helpers';
 import type { ComponentRepository } from '../repositories/componentRepository';
 import type {
   Component,
@@ -21,9 +21,12 @@ import type { Paginated } from '@/types/common';
 
 const COLLECTION = 'components';
 
-function photoPath(id: string): string {
-  return `components/${id}/photo`;
-}
+/**
+ * Лимит Firestore на размер документа — 1 МБ.
+ * Base64 раздувает файл примерно на 33%, поэтому держим запас:
+ * ~900 000 символов base64 ≈ 675 КБ бинарных данных.
+ */
+const MAX_PHOTO_BASE64_LENGTH = 900_000;
 
 function mapComponent(id: string, data: Record<string, unknown>): Component {
   return {
@@ -37,8 +40,10 @@ function mapComponent(id: string, data: Record<string, unknown>): Component {
     quantity: Number(data.quantity ?? 0),
     note: (data.note as string) ?? '',
     status: data.status as Component['status'],
-    photoUrl: (data.photoUrl as string | null) ?? null,
-    hasPhoto: Boolean(data.hasPhoto ?? data.photoUrl),
+    // Фото хранится прямо в документе как base64-строка.
+    // Поле в типе Component должно называться `photo`.
+    photo: (data.photo as string | null) ?? null,
+    hasPhoto: Boolean(data.photo),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   } as Component;
@@ -88,30 +93,25 @@ export class FirebaseComponentRepository implements ComponentRepository {
   async create(data: CreateComponentInput): Promise<Component> {
     const newRef = doc(collection(db, COLLECTION));
 
-    const photo = (data as { photo?: File | Blob | string | null }).photo;
+    // Ожидаем, что photo — base64 data URL, полученный через processPhotoFile.
+    const photo = (data as { photo?: string | null }).photo ?? null;
 
-    let photoUrl: string | null = null;
-    if (photo) {
-      // Если загрузка фото падает (CORS/права) — не теряем запись целиком,
-      // а сообщаем пользователю понятную ошибку.
-      try {
-        photoUrl = await uploadPhoto(photoPath(newRef.id), photo);
-      } catch (err) {
-        console.error('uploadPhoto failed:', err);
-        throw new Error(
-          'Не удалось загрузить фото. Проверьте CORS в Firebase Storage и правила Storage.'
-        );
-      }
+    if (photo && photo.length > MAX_PHOTO_BASE64_LENGTH) {
+      throw new Error(
+        'Фото слишком большое для Firestore (лимит ~1 МБ на документ). ' +
+          'Сожмите изображение или уменьшите разрешение.'
+      );
     }
 
     const payload: Record<string, unknown> = {
       ...data,
-      photoUrl,
-      hasPhoto: Boolean(photoUrl),
+      photo,
+      hasPhoto: Boolean(photo),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    delete payload.photo;
+    // На случай, если в data пришло лишнее поле photoUrl.
+    delete payload.photoUrl;
 
     await setDoc(newRef, cleanForFirestore(payload));
 
@@ -123,10 +123,7 @@ export class FirebaseComponentRepository implements ComponentRepository {
   async update(id: string, patch: UpdateComponentInput): Promise<Component> {
     const ref = doc(db, COLLECTION, id);
 
-    const p = patch as unknown as {
-      photo?: File | Blob | string | null;
-      [k: string]: unknown;
-    };
+    const p = patch as unknown as { photo?: string | null };
 
     const firestorePatch: Record<string, unknown> = {
       ...patch,
@@ -134,29 +131,21 @@ export class FirebaseComponentRepository implements ComponentRepository {
     };
 
     if ('photo' in p) {
-      if (p.photo === null) {
-        // Удаляем старое фото, но не блокируем обновление документа,
-        // если Storage ответил ошибкой.
-        try {
-          await tryDeletePhoto(photoPath(id));
-        } catch (err) {
-          console.warn('Не удалось удалить старое фото:', err);
-        }
-        firestorePatch.photoUrl = null;
+      // p.photo может быть undefined — обрабатываем это явно.
+      if (p.photo === null || p.photo === '' || p.photo === undefined) {
+        firestorePatch.photo = null;
         firestorePatch.hasPhoto = false;
-      } else if (p.photo) {
-        try {
-          firestorePatch.photoUrl = await uploadPhoto(photoPath(id), p.photo);
-          firestorePatch.hasPhoto = true;
-        } catch (err) {
-          console.error('uploadPhoto failed:', err);
+      } else {
+        if (p.photo.length > MAX_PHOTO_BASE64_LENGTH) {
           throw new Error(
-            'Не удалось загрузить фото. Проверьте CORS в Firebase Storage и правила Storage.'
+            'Фото слишком большое для Firestore (лимит ~1 МБ на документ). ' +
+              'Сожмите изображение или уменьшите разрешение.'
           );
         }
+        firestorePatch.photo = p.photo;
+        firestorePatch.hasPhoto = true;
       }
     }
-    delete firestorePatch.photo;
 
     await updateDoc(ref, cleanForFirestore(firestorePatch));
 
@@ -166,17 +155,10 @@ export class FirebaseComponentRepository implements ComponentRepository {
   }
 
   async delete(id: string): Promise<void> {
-    // 1. Сначала удаляем документ из Firestore — это главное действие.
-    //    Если оно упадёт (permission-denied), пользователь сразу увидит ошибку.
+    // Фото хранится в самом документе — удаляем только документ.
+    // Никаких обращений к Storage, поэтому CORS/права Storage
+    // больше не могут заблокировать удаление.
     await deleteDoc(doc(db, COLLECTION, id));
-
-    // 2. Затем пытаемся удалить фото. Ошибка Storage (CORS/права)
-    //    больше не мешает удалению записи.
-    try {
-      await tryDeletePhoto(photoPath(id));
-    } catch (err) {
-      console.warn('Запись удалена, но фото осталось в Storage:', err);
-    }
   }
 
   async bulkCreate(items: CreateComponentInput[]): Promise<Component[]> {
