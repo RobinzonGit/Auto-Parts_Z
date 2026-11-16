@@ -143,7 +143,7 @@ export function AdminComponentsPage() {
   return (
     <>
       <PageHeader
-        title="Управление запчастями"
+        title="Редактирование каталога"
         subtitle={`Позиций: ${total}`}
         actions={
           <>
