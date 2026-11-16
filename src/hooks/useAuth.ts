@@ -3,8 +3,7 @@ import type { Role, User } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 
 /**
- * Удобная обёртка над authStore: флаги ролей, используемые в UI.
- * Пример: const { isAdmin, user } = useAuth();
+ * Удобная обёртка над authStore: флаги ролей для UI.
  */
 export function useAuth(): {
   user: User | null;
@@ -28,7 +27,6 @@ export function useAuth(): {
   );
 }
 
-/** Проверка наличия роли у пользователя (для условного рендера). */
 export function hasRole(user: User | null, roles: Role[]): boolean {
   return user !== null && roles.includes(user.role);
 }

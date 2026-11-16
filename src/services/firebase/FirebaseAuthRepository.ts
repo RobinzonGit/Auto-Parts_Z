@@ -1,4 +1,3 @@
-import { getRoleFromUser, translateAuthError, cleanForFirestore } from './helpers';
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
@@ -12,16 +11,15 @@ import {
 } from 'firebase/auth';
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
+  serverTimestamp,
   setDoc,
   updateDoc,
-  serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from './config';
-//import { getRoleFromUser, translateAuthError } from './helpers';
+import { translateAuthError, toIso } from './helpers';
 import type { AuthRepository } from '../repositories/authRepository';
 import type {
   LoginInput,
@@ -33,43 +31,34 @@ import type {
 
 const USERS = 'users';
 
-/** Маппинг Firebase User + Firestore-документа в доменный User. */
 async function mapFirebaseUser(fbUser: FirebaseUser): Promise<User> {
   const snap = await getDoc(doc(db, USERS, fbUser.uid));
   const profile = snap.exists() ? snap.data() : {};
-  const claimRole = await getRoleFromUser(fbUser);
-  const role: Role = claimRole ?? (profile.role as Role) ?? 'user';
+
+  // Роль — обычное поле документа users/{uid}. Не custom claims.
+  const role: Role =
+    profile.role === 'admin' || profile.role === 'moderator' || profile.role === 'user'
+      ? profile.role
+      : 'user';
 
   return {
     id: fbUser.uid,
     email: fbUser.email ?? '',
-    name: profile.name ?? fbUser.displayName ?? '',
+    name: (profile.name as string) ?? fbUser.displayName ?? '',
     role,
-  } as User;
+    createdAt: toIso(profile.createdAt) ?? '',
+    updatedAt: toIso(profile.updatedAt) ?? '',
+  };
 }
 
-/**
- * Кэш текущего пользователя — нужен для СИНХРОННОГО getCurrentUser().
- * onAuthStateChanged асинхронный, а интерфейс требует синхронного чтения.
- */
 let cachedUser: User | null = null;
 let initialized = false;
 
 function ensureAuthListener(): void {
   if (initialized) return;
   initialized = true;
-
   onAuthStateChanged(auth, async (fbUser) => {
-    if (!fbUser) {
-      cachedUser = null;
-      return;
-    }
-    try {
-      cachedUser = await mapFirebaseUser(fbUser);
-    } catch (err) {
-      console.error('auth state mapping failed:', err);
-      cachedUser = null;
-    }
+    cachedUser = fbUser ? await mapFirebaseUser(fbUser).catch(() => null) : null;
   });
 }
 
@@ -83,18 +72,13 @@ export class FirebaseAuthRepository implements AuthRepository {
       const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
       await firebaseUpdateProfile(cred.user, { displayName: data.name });
 
-      // await setDoc(doc(db, USERS, cred.user.uid), {
-      //   email: data.email,
-      //   name: data.name,
-      //   role: 'user',
-      //   createdAt: serverTimestamp(),
-      // });
-      await setDoc(doc(db, USERS, cred.user.uid), cleanForFirestore({
+      await setDoc(doc(db, USERS, cred.user.uid), {
         email: data.email,
         name: data.name,
         role: 'user',
         createdAt: serverTimestamp(),
-      }));
+        updatedAt: serverTimestamp(),
+      });
 
       const user = await mapFirebaseUser(cred.user);
       cachedUser = user;
@@ -121,10 +105,6 @@ export class FirebaseAuthRepository implements AuthRepository {
   }
 
   getCurrentUser(): User | null {
-    // Возвращаем последнее известное значение. На первом рендере после
-    // перезагрузки оно может быть null, пока onAuthStateChanged не отработает.
-    // Если в UI есть ожидание — можно добавить подписку через `subscribe`
-    // (см. примечание ниже).
     return cachedUser;
   }
 
@@ -132,19 +112,11 @@ export class FirebaseAuthRepository implements AuthRepository {
     const fbUser = auth.currentUser;
     if (!fbUser || fbUser.uid !== userId) throw new Error('Не авторизован');
 
-    if (patch.name !== undefined) {
-      await firebaseUpdateProfile(fbUser, { displayName: patch.name });
-    }
-
-    // email в MVP не редактируется, но если patch.email есть — игнорируем
-    // или добавьте verifyBeforeUpdateEmail, если это требуется.
-    const firestorePatch: Record<string, unknown> = {
+    await firebaseUpdateProfile(fbUser, { displayName: patch.name });
+    await updateDoc(doc(db, USERS, userId), {
+      name: patch.name,
       updatedAt: serverTimestamp(),
-    };
-    if (patch.name !== undefined) firestorePatch.name = patch.name;
-
-    //await updateDoc(doc(db, USERS, userId), firestorePatch);
-    await updateDoc(doc(db, USERS, userId), cleanForFirestore(firestorePatch));
+    });
 
     const user = await mapFirebaseUser(fbUser);
     cachedUser = user;
@@ -154,7 +126,7 @@ export class FirebaseAuthRepository implements AuthRepository {
   async changePassword(
     userId: string,
     oldPassword: string,
-    newPassword: string
+    newPassword: string,
   ): Promise<void> {
     const fbUser = auth.currentUser;
     if (!fbUser || fbUser.uid !== userId || !fbUser.email) {
@@ -173,53 +145,47 @@ export class FirebaseAuthRepository implements AuthRepository {
     const snap = await getDocs(collection(db, USERS));
     return snap.docs.map((d) => {
       const data = d.data();
+      const role: Role =
+        data.role === 'admin' || data.role === 'moderator' || data.role === 'user'
+          ? data.role
+          : 'user';
       return {
         id: d.id,
-        email: data.email ?? '',
-        name: data.name ?? '',
-        role: (data.role as Role) ?? 'user',
-      } as User;
+        email: (data.email as string) ?? '',
+        name: (data.name as string) ?? '',
+        role,
+        createdAt: toIso(data.createdAt) ?? '',
+        updatedAt: toIso(data.updatedAt) ?? '',
+      };
     });
   }
 
   /**
-   * Назначение роли. Custom claims нельзя установить из браузера —
-   * нужна Cloud Function с Admin SDK. Ниже каркас под callable-функцию.
-   * До её развёртывания метод бросает ошибку, чтобы это не выглядело
-   * «сработавшим», хотя права не изменились.
+   * Смена роли: обновляем документ users/{uid}.
+   * Права проверяют правила Firestore — только admin может писать role.
+   * Никаких Cloud Functions и custom claims.
    */
   async updateRole(userId: string, role: Role): Promise<void> {
-     const { getFunctions, httpsCallable } = await import('firebase/functions');
-     const fns = getFunctions();
-     await httpsCallable(fns, 'setUserRole')({ uid: userId, role });
-    throw new Error(
-      `updateRole(${userId}, ${role}) требует Cloud Function с Admin SDK ` +
-        '(custom claims нельзя менять с клиента).'
-    );
+    if (role !== 'user' && role !== 'moderator' && role !== 'admin') {
+      throw new Error('Недопустимая роль');
+    }
+    await updateDoc(doc(db, USERS, userId), {
+      role,
+      updatedAt: serverTimestamp(),
+    });
   }
 
+  /**
+   * Удаление из Firebase Auth требует Admin SDK.
+   * Здесь удаляем только документ профиля; для полного удаления
+   * позже можно добавить Cloud Function.
+   */
   async deleteUser(userId: string): Promise<void> {
-     const { getFunctions, httpsCallable } = await import('firebase/functions');
-     await httpsCallable(getFunctions(), 'deleteUser')({ uid: userId });
-    // Ниже — только удаление документа профиля; удаление из Firebase Auth
-    // доступно только через Admin SDK.
+    const { deleteDoc } = await import('firebase/firestore');
     await deleteDoc(doc(db, USERS, userId));
-    throw new Error(
-      'Пользователь удалён из Firestore, но не из Firebase Auth — ' +
-        'для полного удаления нужна Cloud Function.'
-    );
   }
 }
 
-/**
- * Дополнительный (не входящий в интерфейс) метод для асинхронного
- * восстановления сессии. Полезно вызвать на старте приложения,
- * чтобы дождаться загрузки пользователя до рендера защищённых маршрутов.
- *
- * Использование:
- *   const authRepo = repositories.auth as FirebaseAuthRepository;
- *   await authRepo.waitForUser();
- */
 export async function waitForUser(): Promise<User | null> {
   if (cachedUser) return cachedUser;
   return new Promise((resolve) => {

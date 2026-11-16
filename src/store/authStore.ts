@@ -5,24 +5,23 @@ import { useUiStore } from './uiStore';
 import { logger } from '@/utils/logger';
 import { toErrorMessage } from '@/utils/errors';
 
-/** Состояние восстановления сессии: idle → loading → ready. */
 export type AuthStatus = 'idle' | 'loading' | 'ready';
 
 interface AuthState {
   user: User | null;
   status: AuthStatus;
   error: string | null;
-  /** Инициализация: сидирование данных и восстановление сессии. */
   init: () => Promise<void>;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (patch: UpdateProfileInput) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+  /** Перечитать пользователя из репозитория (после смены роли и т.п.). */
+  reloadUser: () => Promise<void>;
   clearError: () => void;
 }
 
-/** Аутентификация: пользователь, сессия и действия над ними. */
 export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   status: 'idle',
@@ -33,7 +32,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     set({ status: 'loading' });
     try {
       initStorage();
-      set({ user: repositories.auth.getCurrentUser(), status: 'ready' });
+      const user = repositories.auth.getCurrentUser();
+      set({ user, status: 'ready' });
     } catch (error) {
       logger.error('authStore', 'Ошибка инициализации хранилища', error);
       set({ user: null, status: 'ready' });
@@ -87,6 +87,23 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     if (!current) throw new Error('Пользователь не авторизован');
     await repositories.auth.changePassword(current.id, oldPassword, newPassword);
     useUiStore.getState().showSnackbar('Пароль изменён');
+  },
+
+  /**
+   * Перечитывает текущего пользователя. Нужен, если роль изменили
+   * извне (например, другой админ) и нужно обновить UI без перезагрузки.
+   * Также используется после смены собственной роли.
+   */
+  reloadUser: async () => {
+    const current = get().user;
+    if (!current) return;
+    try {
+      const users = await repositories.auth.listUsers();
+      const fresh = users.find((u) => u.id === current.id);
+      if (fresh) set({ user: fresh });
+    } catch (error) {
+      logger.warn('authStore', 'Не удалось перечитать пользователя', error);
+    }
   },
 
   clearError: () => set({ error: null }),

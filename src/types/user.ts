@@ -1,7 +1,7 @@
 /** Роли пользователей системы. Иерархия: user < moderator < admin. */
 export type Role = 'user' | 'moderator' | 'admin';
 
-/** Публичный профиль пользователя (без хэша пароля — он никогда не покидает хранилище). */
+/** Публичный профиль пользователя. */
 export interface User {
   id: string;
   email: string;
@@ -24,7 +24,7 @@ export interface LoginInput {
   password: string;
 }
 
-/** Патч профиля: в MVP разрешено менять только имя (email — идентификатор входа). */
+/** Патч профиля: в MVP разрешено менять только имя. */
 export interface UpdateProfileInput {
   name: string;
 }
